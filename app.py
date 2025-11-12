@@ -122,3 +122,40 @@ async def download(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download error: {e}")
+from telethon.tl import types as tl_types
+
+@app.get("/recent_media")
+async def recent_media(
+    peer: str = Query(..., description="Chat privata: @BotUsername"),
+    limit: int = Query(20, ge=1, le=200, description="Quanti messaggi scandire"),
+    x_api_key: str | None = Header(default=None, convert_underscores=False),
+):
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        entity = await client.get_entity(peer)
+        out = []
+        async for msg in client.iter_messages(entity, limit=limit):
+            kind = None
+            if msg.photo:
+                kind = "photo"
+            elif isinstance(msg.media, tl_types.MessageMediaDocument):
+                mime = None
+                try:
+                    mime = msg.document.mime_type
+                except Exception:
+                    pass
+                if mime and mime.startswith("video/"):
+                    kind = "video"
+                else:
+                    kind = "document"
+            if msg.media:
+                out.append({
+                    "id": msg.id,
+                    "date": str(msg.date),
+                    "kind": kind,
+                    "caption": (msg.message or "")[:80],
+                })
+        return {"ok": True, "count": len(out), "items": out}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"recent_media error: {e}")
