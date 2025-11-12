@@ -190,3 +190,48 @@ async def last_media_id(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"last_media_id error: {e}")
+
+@app.get("/download_last")
+async def download_last(
+    peer: str = Query(..., description="Chat privata: @BotUsername"),
+    only_from_me: bool = Query(True, description="True = prendo solo media inviati da me"),
+    limit: int = Query(200, ge=1, le=1000, description="Quanti messaggi recenti scandire"),
+    x_api_key: str | None = Header(default=None, convert_underscores=False),
+):
+    """
+    Scarica direttamente l'ULTIMO file multimediale della chat privata con il bot.
+    Perfetto per usarlo direttamente in CloudConvert (Import from URL).
+    """
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        entity = await client.get_entity(peer)
+        async for msg in client.iter_messages(entity, limit=limit):
+            # Solo messaggi con media
+            if not msg.media:
+                continue
+            # Solo i media inviati da te (l'utente della STRING_SESSION)
+            if only_from_me and not msg.out:
+                continue
+
+            # Scarica il file temporaneamente
+            tmpdir = tempfile.mkdtemp()
+            path = await client.download_media(msg, file=tmpdir)
+            if not path:
+                continue
+
+            # Prepara nome e mime
+            mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+            name = os.path.basename(path)
+            with open(path, "rb") as f:
+                data = f.read()
+
+            headers = {"Content-Disposition": f'attachment; filename="{name}"'}
+            return Response(content=data, media_type=mime, headers=headers)
+
+        raise HTTPException(status_code=404, detail="No media found in recent messages")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"download_last error: {e}")
