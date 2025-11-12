@@ -161,22 +161,32 @@ async def recent_media(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"recent_media error: {e}")
 
-
-@app.get("/lookup_message")
-async def lookup_message(
+@app.get("/last_media_id")
+async def last_media_id(
     peer: str = Query(..., description="Chat privata: @BotUsername"),
-    short_id: int = Query(..., description="Message ID del bot (corto)"),
+    only_from_me: bool = Query(True, description="True = prendo solo i media inviati da me"),
+    limit: int = Query(200, ge=1, le=1000, description="Quanti messaggi recenti scandire"),
+    x_api_key: str | None = Header(default=None, convert_underscores=False),
 ):
     """
-    Cerca di trovare il messaggio corrispondente a quello del Bot API (es. message_id=634)
-    scorrendo i messaggi recenti nella chat privata con il bot.
+    Restituisce l'ID dell'ULTIMO messaggio con media nella chat privata con il bot.
+    Di default considera SOLO i media inviati da TE (msg.out == True), così non prendi
+    le risposte automatiche del bot.
     """
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         entity = await client.get_entity(peer)
-        async for msg in client.iter_messages(entity, limit=100):
-            if msg.id == short_id or (msg.reply_to and msg.reply_to.reply_to_msg_id == short_id):
-                return {"ok": True, "found": True, "real_id": msg.id, "date": str(msg.date)}
-        return {"ok": True, "found": False, "detail": "Not found in last 100 messages"}
+        # msg.out == True => messaggi INVIATI da te (utente della STRING_SESSION)
+        async for msg in client.iter_messages(entity, limit=limit):
+            if not msg.media:
+                continue
+            if only_from_me and not msg.out:
+                continue
+            kind = "photo" if getattr(msg, "photo", None) else "document"
+            return {"ok": True, "id": msg.id, "date": str(msg.date), "kind": kind}
+        raise HTTPException(status_code=404, detail="No matching media found in recent messages")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"lookup_message error: {e}")
-
+        raise HTTPException(status_code=500, detail=f"last_media_id error: {e}")
