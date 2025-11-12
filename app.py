@@ -122,6 +122,7 @@ async def download(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download error: {e}")
+        
 from telethon.tl import types as tl_types
 
 @app.get("/recent_media")
@@ -159,3 +160,23 @@ async def recent_media(
         return {"ok": True, "count": len(out), "items": out}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"recent_media error: {e}")
+
+
+@app.get("/lookup_message")
+async def lookup_message(
+    peer: str = Query(..., description="Chat privata: @BotUsername"),
+    short_id: int = Query(..., description="Message ID del bot (corto)"),
+):
+    """
+    Cerca di trovare il messaggio corrispondente a quello del Bot API (es. message_id=634)
+    scorrendo i messaggi recenti nella chat privata con il bot.
+    """
+    try:
+        entity = await client.get_entity(peer)
+        async for msg in client.iter_messages(entity, limit=100):
+            if msg.id == short_id or (msg.reply_to and msg.reply_to.reply_to_msg_id == short_id):
+                return {"ok": True, "found": True, "real_id": msg.id, "date": str(msg.date)}
+        return {"ok": True, "found": False, "detail": "Not found in last 100 messages"}
+    except Exception as e:
+        raise HTTPException(500, f"lookup_message error: {e}")
+
