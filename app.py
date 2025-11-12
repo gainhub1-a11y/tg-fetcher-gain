@@ -122,13 +122,3 @@ async def download(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download error: {e}")
-
-from telethon.tl import types as tl_types
-
-@app.get("/recent_media")
-async def recent_media(
-    peer: str = Query(..., description="Chat privata: @BotUsername"),
-    limit: int = Query(20, ge=1, le=200, description="Quanti messaggi scandire"),
-    x_api_key: str | None = Header(default=None, convert_underscores=False),
-):
-    ...
